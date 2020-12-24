@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game</title>
+</head>
+<style>
+    html, body{
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+    }
+    canvas{
+        width: 100%;
+        height: 100%;
+        padding: 0;
+    }
+</style>
+<body oncontextmenu="return false;">
+    <canvas></canvas>
+
+    <script src="./perlin.js"></script>
+
+    <script>
+        const square = (size, color) =>{
+            return {
+                size:size,
+                color:color,
+                draw: function (ctx, x, y) {
+                    ctx.fillStyle = this.color
+                    ctx.fillRect(x,y,this.size,this.size)
+                }
+            }
+        }
+
+        const rectangle = (size, color) =>{
+            return {
+                size:size,
+                color:color,
+                draw: function (ctx, x, y) {
+                    ctx.fillStyle = this.color
+                    ctx.fillRect(x,y,this.size.x,this.size.y)
+                }
+            }
+        }
+
+        const circle = (size, color) =>{
+            return {
+                size:size,
+                color:color,
+                draw: function (ctx, x, y) {
+                    ctx.fillStyle = this.color
+                    ctx.beginPath()
+                    ctx.arc(x,y,this.size,0,Math.PI*2,false)
+                    ctx.fill()
+                }
+            }
+        }
+
+        const line = (color) =>{
+            return {
+                //size:size,
+                color:color,
+                draw: (ctx, x1, y1, x2, y2) =>{
+                    ctx.strokeStyle = color
+                    ctx.beginPath()
+                    ctx.moveTo(x1,y1)
+                    ctx.lineTo(x2,y2)
+                    ctx.stroke()
+                }
+            }
+        }
+
+        const text = (color,size,text) =>{
+            return {
+                size:size,
+                color:color,
+                draw: function (ctx, x,y) {
+                    ctx.fillStyle = this.color
+                    ctx.font = this.size+"px Arial";
+                    ctx.fillText(text, x,y);
+                }
+            }
+        }
+
+        const song = function(file){
+            let content = document.createElement("audio");
+            content.src = file;
+            content.setAttribute("preload", "auto");
+            content.setAttribute("controls", "none");
+            content.style.display = "none";
+            document.body.appendChild(content);
+            return {
+                content: content,
+                play: function(loop){
+                    if (loop===true) {
+                        this.content.loop = true
+                    }
+                    this.content.play()
+                },
+                stop: function(){
+                    this.content.pause()
+                }
+            }
+        }
+            
+    </script>
+    <script>
+
+        const canvas = document.querySelector('canvas')
+        const ctx = canvas.getContext('2d')
+        const framerate = (1000/120)
+        const computedRate = (1000/120)
+        const _env = {
+            time:0,
+            tick:false,
+            bullets:[],
+            bulletsIndex:0,
+            level:1,
+            mobs:[],
+            songs:{
+                game:song('./music/game.mp3'),
+                lose:song('./music/lose.mp3'),
+                weapon:song('./effect/weapon.mp3'),
+                hurt:song('./effect/hurt.mp3'),
+                hit:song('./effect/hit.mp3'),
+            },
+            start:false,
+            gameSongStart: false,
+            loseSongStart: false,
+            status: 'Play',
+            statusColor: '#FF0000',
+            draw: function (ctx) {
+                for (let index = 0; index < this.bullets.length; index++) {
+                    const bullet = this.bullets[index];
+                    bullet.ui.draw(ctx, bullet.x, bullet.y)
+                }
+                for (let index = 0; index < this.mobs.length; index++) {
+                    const mob = this.mobs[index];
+                    mob.draw(ctx)
+                }
+            },
+            computed: function () {
+                for (let index = 0; index < this.bullets.length; index++) {
+                    const bullet = this.bullets[index];
+                    bullet.life-=computedRate
+                    if(bullet.life<=0){
+                        this.bullets.splice(index,1)
+                    }else{
+                        //bullet.acceleration = bullet.x/bullet.life
+                        bullet.x += bullet.vector.x*bullet.speed//+(bullet.speed*bullet.life)+(0.5*bullet.life*bullet.life)
+                        bullet.y += bullet.vector.y*bullet.speed//+(bullet.speed*bullet.life)+(0.5*bullet.life*bullet.life)
+
+                        for (let index = 0; index < this.mobs.length; index++) {
+                            const mob = this.mobs[index];
+                            if (mob.tryHit(bullet)){
+                                mob.hit(bullet)
+                                bullet.life=0
+                                player.score+=mob.loots.points
+                            }                   
+                        }
+                    }
+                    
+                }
+
+                for (let index = 0; index < this.mobs.length; index++) {
+                    const mob = this.mobs[index];
+
+                    if (mob.isDead()) { 
+                        this.mobs.splice(index,1)
+                        if (this.mobs.length<=0) {
+                            this.level++
+                            for (let index = 0; index < this.level; index++) {
+                                this.addMobs(Math.floor(Math.random() * Math.floor(canvas.width-100)),Math.floor(Math.random() * Math.floor(canvas.height-100)),1)                            
+                            }
+                        }
+                    }else{
+                        mob.move(_env)
+                        if (player.tryHit(mob)) {
+                            player.hit(mob)
+                            mob.life = 0
+                        }
+                    }                    
+                }
+            },
+            addMobs: function (x,y,damage) {
+                this.mobs.push({
+                    x:x,
+                    y:y,
+                    vector:{
+                        x:1,
+                        y:1,
+                        change:0
+                    },
+                    speed:2,
+                    perlin : new Perlin('random seed'),
+                    loots:{
+                        points:500
+                    },
+                    life:30,
+                    damage:damage,
+                    size:70,
+                    color : 'rgb(252, 3, 136)',
+                    rgb:{
+                        r:252,
+                        g:3,
+                        b:136
+                    },
+                    ui: square(70,'#fc0388'),
+                    draw: function (ctx) {
+                        this.ui.draw(ctx, this.x, this.y)
+                        this.ui.color = this.color
+                    },
+                    hit: function (bullet) {
+                        _env.songs.hit.play()
+                        this.life-=bullet.damage
+                        this.ui.color = bullet.color  
+                        this.rgb.g+=60
+                        this.rgb.b+=50
+                        this.color = 'rgb(' + this.rgb.r + ', ' +this.rgb.g  + ', '+ this.rgb.b +')';                      
+                    },
+                    tryHit: function (bullet) {
+                        return (bullet.x>this.x && bullet.x<(this.x+this.size) && bullet.y>this.y && bullet.y<(this.y+this.size))
+                    },
+                    isDead: function () {
+                        return this.life<=0
+                    },
+                    move: function (environment) {
+                        if (environment.time-this.vector.change>1) {
+                            this.vector.x = Math.floor(Math.random() * Math.floor(100))>50? -1:1
+                            this.vector.y = Math.floor(Math.random() * Math.floor(100))>50? -1:1
+                            this.vector.change = environment.time
+                        }
+
+                        this.x += this.vector.x*this.speed
+                        this.y += this.vector.y*this.speed
+
+                        this.x = Math.min(this.x, canvas.width-(this.size))
+                        this.x = Math.max(this.x, 0)
+                        
+                        this.y = Math.min(this.y, canvas.height-(this.size))
+                        this.y = Math.max(this.y, 0)
+                    }
+                })
+            }
+        }
+        _env.addMobs(600,200,1)
+
+        const mouse = {
+            x:0,
+            y:0
+        }
+
+        const player = {
+            x: document.body.clientWidth/2,
+            y: document.body.clientHeight-100,
+            size: 100,
+            speed: 3,
+            life:10,
+            lifemax: 10,
+            score:0,
+            color: '#040052',
+            ui: square(100,'#040052'),
+            targetLine: line('#FF0000'),
+            curseur: circle(10,'#FF0000'),
+            action:{
+                moveRight:false,
+                moveLeft:false,
+                moveUp:false,
+                moveDown:false,
+                fire:false,
+                scope:false
+            },
+            weapon: {
+                damage: 6,
+                amount: 100,
+                reloadTime: 3,
+                time:0,
+                bulletsFired:[],
+                bulletSpeed: 5,
+                bulletLife: 300,
+                bulletIterval:100,
+                bulletColor:'#fcba03',
+                bulletSize:10
+            },
+            lastFired: 0,
+            draw: function (ctx) {
+                this.ui.draw(ctx,this.x,this.y)
+                this.ui.color = this.color
+
+                this.targetLine.draw(ctx,mouse.x,mouse.y,this.x+(this.size/2),this.y+(this.size/2))
+
+                this.curseur.draw(ctx,mouse.x,mouse.y)
+            },
+            computed: function (ctx, curseur, environment) {
+                if (this.action.moveRight) {                    
+                    this.x+=this.speed
+                }
+                if (this.action.moveLeft) {                    
+                    this.x-=this.speed
+                }
+                if (this.action.moveUp) {                    
+                    this.y-=this.speed
+                }
+                if (this.action.moveDown) {                    
+                    this.y+=this.speed
+                }
+                if (this.action.fire && (this.weapon.time-this.lastFired>=this.weapon.bulletIterval)) {                    
+                    this.fire(curseur,environment)
+                    this.lastFired = this.weapon.time
+                }
+
+                this.weapon.time+=computedRate
+                
+                this.x = Math.min(this.x, canvas.width-(this.size))
+                this.x = Math.max(this.x, 0)
+                
+                this.y = Math.min(this.y, canvas.height-(this.size))
+                this.y = Math.max(this.y, 0)
+            },
+            fire: function (curseur, environment) {
+                _env.songs.weapon.play()
+                let x = this.x+(this.size/2)
+                let y = this.y+(this.size/2)
+                let d = Math.sqrt(Math.pow(Math.abs(x-curseur.x),2)+Math.pow(Math.abs(y-curseur.y),2))
+
+                environment.bullets.push({
+                    x:this.x+(this.size/2),
+                    y:this.y+(this.size/2),
+                    ui: circle(this.weapon.bulletSize,this.weapon.bulletColor),
+                    damage: this.weapon.damage,
+                    life:this.weapon.bulletLife,
+                    speed: this.weapon.bulletSpeed,
+                    acceleration:1,
+                    vector:{
+                        x: (curseur.x-x)/(d/this.weapon.bulletSpeed),
+                        y: (curseur.y-y)/(d/this.weapon.bulletSpeed)
+                    }
+                })
+            },
+            tryHit: function (mob) {
+                return ((mob.x>=this.x || mob.x+mob.size>=this.x) 
+                && (mob.x<=(this.x+this.size) || mob.x+mob.size<=(this.x+this.size)) 
+                && (mob.y>=this.y || (mob.y+mob.size>=this.y)) 
+                && (mob.y<=(this.y+this.size) || mob.y+mob.size<=(this.y+this.size)))
+            },
+            hit: function (mob) {
+                _env.songs.hurt.play()
+                this.life-=mob.damage
+                this.ui.color = mob.color
+            },
+            isDead: function () {
+                return this.life<=0
+            }
+        }
+
+        canvas.width = document.body.clientWidth; //document.width is obsolete
+        canvas.height = document.body.clientHeight; //document.height is obsolete
+
+        canvas.addEventListener("mousemove", function (e) {
+            let mousePos = getMousePos(canvas, e)
+            mouse.x = mousePos.x
+            mouse.y = mousePos.y
+        }, false)
+
+        canvas.addEventListener("mousedown", function (e) {
+            if (!_env.gameSongStart) {
+                _env.songs.game.play(true)
+                _env.gameSongStart = true
+            }           
+            if (typeof e === 'object') {
+                switch (e.button) {
+                case 0:
+                    player.action.fire = true
+                    break;
+                case 1:
+                    console.log('Middle button clicked.')
+                    break;
+                case 2:
+                console.log('Right button clicked.')
+                    break;
+                default:
+                console.log(`Unknown button code: ${e.button}`)
+                }
+            }
+        }, false)
+
+        canvas.addEventListener("mouseup", function (e) {
+            
+            if (typeof e === 'object') {
+                switch (e.button) {
+                case 0:
+                    player.action.fire = false
+                    break;
+                case 1:
+                    console.log('Middle button released.')
+                    break;
+                case 2:
+                console.log('Right button released.')
+                    break;
+                default:
+                console.log(`Unknown button code: ${e.button}`)
+                }
+            }
+        }, false)
+
+        document.addEventListener('keydown', (e) => {
+            if (!_env.gameSongStart) {
+                _env.songs.game.play(true)
+                _env.gameSongStart = true
+            }
+            switch (e.key) {
+                case 'z':
+                    player.action.moveUp = true                        
+                    break;
+                case 's':
+                    player.action.moveDown = true                        
+                    break;
+                case 'q':
+                    player.action.moveLeft = true                        
+                    break;
+                case 'd':
+                    player.action.moveRight = true                        
+                    break;
+            
+                default:
+                    break;
+            }
+        })
+
+        document.addEventListener('keyup', (e) => {
+            switch (e.key) {
+                case 'z':
+                    player.action.moveUp = false                        
+                    break;
+                case 's':
+                    player.action.moveDown = false                        
+                    break;
+                case 'q':
+                    player.action.moveLeft = false                        
+                    break;
+                case 'd':
+                    player.action.moveRight = false                        
+                    break;
+            
+                default:
+                    break;
+            }
+        })
+
+        function draw(){
+            canvas.width = document.body.clientWidth; //document.width is obsolete
+            canvas.height = document.body.clientHeight; //document.height is obsolete
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+
+            if (parseInt(_env.time)%2==0) {
+                let tick = circle(20,'#FF0000')
+                if (!player.isDead()) {
+                    _env.status = 'Play'
+                    _env.statusColor = '#FF0000'
+                }else{
+                    tick.color = '#000000'
+                    _env.statusColor = '#000000'
+                    _env.status = 'Pause'
+                }
+                tick.draw(ctx,100,100)
+            }else{
+                let tick = circle(20,'#FFFFFF')
+                tick.draw(ctx,100,100)
+            }
+
+            let title = text('#000000', 50, 'SkyBrick')
+            title.draw(ctx,100,canvas.height-100)
+
+            let credits = text('#000000', 30, 'made by dieunelson.fr & Mouhamadou Ndour')
+            credits.draw(ctx,100,canvas.height-50)
+
+            let gameStatus = text(_env.statusColor, 50, _env.status)
+            gameStatus.draw(ctx,130,120)
+
+            let lifebar = rectangle({x:520,y:50},_env.statusColor)
+            lifebar.draw(ctx,290,80)
+            let lifebarValue = rectangle({x:Math.max(0,(player.life*500)/player.lifemax),y:30},'#FFFFFF')
+            lifebarValue.draw(ctx,300,90)
+
+            let score = text('#000000', 30, 'Score : '+player.score)
+            score.draw(ctx,290,160)
+
+            
+
+            
+
+            if (!player.isDead()) {
+                player.draw(ctx)
+                
+            }else{
+                if (_env.gameSongStart) {
+                    _env.songs.game.stop()
+                    _env.gameSongStart = false
+                }
+                if (!_env.loseSongStart) {                   
+                    _env.songs.lose.play(true)
+                    _env.loseSongStart = true
+                }
+                let endGameMessage = text('#000000', 120, 'You lose !')
+                endGameMessage.draw(ctx,500,500)
+
+                let endGameScore = text('#FF0000', 70, 'Score : '+player.score)
+                endGameScore.draw(ctx,520,600)
+
+                let endGameRestartMessage = text('#000000', 30, '<Refresh the page to restart>')
+                endGameRestartMessage.draw(ctx,520,650)
+
+                player.x = -500
+                player.y = -500
+            }
+
+            _env.draw(ctx)
+            _env.tick = false
+        }
+
+        setInterval(()=>{
+            draw()
+        },framerate)
+        setInterval(()=>{
+            _env.time+=1
+            _env.tick = true
+        },1000)
+        setInterval(()=>{
+            _env.computed()
+            if (!player.isDead()) {                
+                player.computed(ctx, mouse, _env)
+            }            
+        },computedRate)
+    </script>
+
+    <script>
+
+        function getMousePos(canvasDom, mouseEvent) {
+            var rect = canvasDom.getBoundingClientRect()
+            return {
+                x: (mouseEvent.clientX),
+                y: (mouseEvent.clientY)
+            }
+        }
+    </script>
+</body>
+</html>
