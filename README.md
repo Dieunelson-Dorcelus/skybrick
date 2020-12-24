@@ -1,5 +1,7 @@
 # skybrick
 
+Game site : <a href="https://skybrick.dlsn.fr/">https://skybrick.dlsn.fr/</a>
+
 <img src="game.png" alt="gameplay">
 
 ## Credits
